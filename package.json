@@ -1,0 +1,54 @@
+{
+  "name": "sui-gas-station",
+  "version": "0.1.2",
+  "description": "Self-hosted TypeScript gas sponsorship library for Sui",
+  "license": "Apache-2.0",
+  "author": "Danny <danny@dannydevs.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dannydevs/sui-gas-station"
+  },
+  "keywords": [
+    "sui",
+    "gas",
+    "sponsorship",
+    "gasless",
+    "blockchain"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "lint": "oxlint . && prettier -c --ignore-unknown .",
+    "lint:fix": "oxlint --fix && prettier -w --ignore-unknown .",
+    "prepublishOnly": "pnpm run typecheck && pnpm run test && pnpm run build"
+  },
+  "peerDependencies": {
+    "@mysten/sui": "^1.45.0"
+  },
+  "devDependencies": {
+    "@mysten/sui": "^1.45.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0",
+    "prettier": "^3.5.0",
+    "oxlint": "^0.16.0"
+  }
+}
