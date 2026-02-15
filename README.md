@@ -4,9 +4,77 @@ Self-hosted gas sponsorship library for Sui. Enable gasless transactions in your
 
 Zero runtime dependencies. One peer dependency: `@mysten/sui`.
 
-## Prerequisites
+## What Is Gas Sponsorship?
 
-Your sponsor keypair must own at least **10 SUI** — the pool splits it into 20 coins of 0.5 SUI each. On testnet, request SUI from the [faucet](https://docs.sui.io/guides/developer/getting-started/get-coins).
+On Sui, every transaction costs gas — a small fee paid in SUI. **Gas sponsorship** lets one address (the sponsor) pay gas on behalf of another (the sender). The sender interacts with your dApp without needing to own SUI.
+
+This is a **two-party model**:
+
+- **Sponsor** (your server) — Holds a funded wallet. Attaches gas to transactions and signs as the payer.
+- **Sender** (your user) — Builds the transaction operations (Move calls, transfers, etc.) and signs as the actor.
+
+Both signatures are submitted together. Sui verifies both — the sender authorized the operation, the sponsor authorized paying for it.
+
+**Common use cases:**
+
+- Onboarding new users who don't have SUI yet
+- Free-to-play games where the developer covers gas
+- Enterprise apps where the company sponsors employee transactions
+- Any dApp that wants zero-friction UX
+
+`sui-gas-station` runs on **your** server — you control the wallet, the policies, and the costs. No third-party API, no per-transaction fees to a vendor.
+
+## Installation
+
+```bash
+npm install sui-gas-station @mysten/sui
+```
+
+`@mysten/sui` is a **peer dependency** — you bring your own version (`^1.45.0`).
+
+## Setup: Fund Your Sponsor Wallet
+
+Before using the library, your sponsor wallet needs SUI. The library will split it into a pool of gas coins automatically.
+
+### 1. Get your sponsor address
+
+```typescript
+import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
+
+const keypair = Ed25519Keypair.fromSecretKey(process.env.SPONSOR_KEY!);
+console.log("Sponsor address:", keypair.toSuiAddress());
+```
+
+### 2. Fund the address
+
+**Testnet / Devnet** — free faucet:
+
+```bash
+# Using the Sui CLI
+sui client faucet --address <YOUR_SPONSOR_ADDRESS> --url https://faucet.devnet.sui.io/v2/gas
+
+# Or use the web faucet: https://docs.sui.io/guides/developer/getting-started/get-coins
+```
+
+**Mainnet** — transfer SUI from an exchange or another wallet to your sponsor address.
+
+### 3. Verify the balance
+
+```bash
+# Using the Sui CLI
+sui client gas --address <YOUR_SPONSOR_ADDRESS>
+```
+
+**Minimum recommended:** 10 SUI. The library splits this into 20 gas coins of 0.5 SUI each (configurable). Each coin handles one sponsored transaction at a time — 20 coins means up to 20 concurrent sponsorships.
+
+### 4. Initialize the pool
+
+```typescript
+const sponsor = new GasSponsor({ client, signer: keypair });
+await sponsor.initialize(); // Fetches coins, splits to pool size, caches gas price
+```
+
+`initialize()` is idempotent — if the address already has properly-split coins (e.g., from a previous run), it reuses them.
 
 ## Quick Start
 
@@ -39,7 +107,7 @@ const response = await client.executeTransactionBlock({
 sponsor.reportExecution(result.reservation, response.effects!);
 ```
 
-> **What are `transactionKindBytes`?** The sender builds their Move calls _without_ gas data using `tx.build({ onlyTransactionKind: true })`. Your gas station attaches the gas coin and signs as sponsor. See [Client-Side Integration](#client-side-integration) for the full sender flow.
+> **What are `transactionKindBytes`?** The sender builds their Move calls _without_ gas data using `tx.build({ onlyTransactionKind: true })`. This produces just the operations — "what I want to do" without "how I'm paying for it." Your gas station attaches the gas coin, sets the budget, and signs as sponsor. See [Client-Side Integration](#client-side-integration) for the full sender flow.
 
 ## How It Works
 
@@ -67,13 +135,103 @@ Execute with [senderSig, sponsorSig]
                                      └─ Recycle gas coin
 ```
 
-## Installation
+## Server Example (Hono)
 
-```bash
-npm install sui-gas-station @mysten/sui
+A complete gas station server in ~30 lines:
+
+```typescript
+import { Hono } from "hono";
+import { SuiClient } from "@mysten/sui/client";
+import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
+import { GasSponsor, GasStationError } from "sui-gas-station";
+
+const client = new SuiClient({ url: "https://fullnode.testnet.sui.io" });
+const keypair = Ed25519Keypair.fromSecretKey(process.env.SPONSOR_KEY!);
+
+const sponsor = new GasSponsor({
+  client,
+  signer: keypair,
+  policy: { maxBudgetPerTx: 50_000_000n },
+});
+await sponsor.initialize();
+
+const app = new Hono();
+
+app.post("/sponsor", async (c) => {
+  const { sender, transactionKindBytes } = await c.req.json();
+  try {
+    const result = await sponsor.sponsorTransaction({
+      sender,
+      transactionKindBytes,
+    });
+    return c.json({
+      transactionBytes: result.transactionBytes,
+      sponsorSignature: result.sponsorSignature,
+      reservation: result.reservation,
+    });
+  } catch (err) {
+    if (err instanceof GasStationError) {
+      return c.json({ error: err.code, message: err.message }, 503);
+    }
+    throw err;
+  }
+});
+
+app.post("/report", async (c) => {
+  const { reservation, effects } = await c.req.json();
+  sponsor.reportExecution(reservation, effects);
+  return c.json({ ok: true });
+});
+
+app.get("/stats", (c) => c.json(sponsor.getStats()));
+
+export default app; // Bun: bun run server.ts | Node: serve with @hono/node-server
 ```
 
-`@mysten/sui` is a **peer dependency** — you bring your own version (`^1.45.0`).
+> **Production note:** Add authentication middleware to `/sponsor` and `/report` before deploying — unauthenticated endpoints allow pool exhaustion via fabricated requests.
+
+## Client-Side Integration
+
+The sender (client) builds transaction kind bytes — the operations without any gas data:
+
+```typescript
+import { Transaction } from "@mysten/sui/transactions";
+import { fromBase64, toBase64 } from "@mysten/sui/utils";
+
+const tx = new Transaction();
+tx.moveCall({ target: "0xpkg::module::function", arguments: [...] });
+
+// Build kind bytes (no gas data)
+const kindBytes = await tx.build({ onlyTransactionKind: true });
+
+// Send to your gas station (base64-encode the bytes for JSON transport)
+const res = await fetch("https://your-gas-station.com/sponsor", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ sender: myAddress, transactionKindBytes: toBase64(kindBytes) }),
+});
+const { transactionBytes, sponsorSignature, reservation } = await res.json();
+
+// Sign the full transaction as sender
+const { signature } = await keypair.signTransaction(fromBase64(transactionBytes));
+
+// Submit with both signatures
+const response = await client.executeTransactionBlock({
+  transactionBlock: transactionBytes,
+  signature: [signature, sponsorSignature],
+  options: { showEffects: true },
+});
+
+// Report back so the gas coin gets recycled — MUST be called even if the transaction failed,
+// because the gas coin's ObjectRef changes regardless of transaction success/failure.
+await fetch("https://your-gas-station.com/report", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ reservation, effects: response.effects }),
+});
+```
+
+**Note:** If the sender's kind bytes reference `tx.gas` (e.g., `splitCoins(tx.gas, ...)`), the sponsor must set `allowGasCoinUsage: true` in the policy — see [Security](#security-gas-coin-drain-prevention).
 
 ## API Reference
 
@@ -226,6 +384,73 @@ await sponsor.sponsorTransaction({
 });
 ```
 
+## Deployment
+
+The gas station is a **long-running server** — it keeps the coin pool in memory for fast sponsorship. Serverless platforms (Lambda, Cloudflare Workers) aren't ideal because the pool reinitializes on every cold start.
+
+### Local Development
+
+```bash
+# With Bun (recommended — runs TypeScript directly)
+SPONSOR_KEY=<base64-key> bun run server.ts
+
+# With Node
+SPONSOR_KEY=<base64-key> npx tsx server.ts
+```
+
+### Production
+
+Any platform that supports a persistent Node.js/Bun process works:
+
+| Platform                                 | Deploy command                    | Cost                |
+| ---------------------------------------- | --------------------------------- | ------------------- |
+| [Railway](https://railway.app)           | Connect GitHub repo, auto-deploys | ~$5/mo              |
+| [Fly.io](https://fly.io)                 | `fly launch && fly deploy`        | ~$5/mo              |
+| [Render](https://render.com)             | Connect GitHub repo, auto-deploys | Free tier available |
+| [DigitalOcean](https://digitalocean.com) | Droplet or App Platform           | $6/mo               |
+| Any VPS                                  | `git clone && bun run server.ts`  | Varies              |
+
+### Environment Variables
+
+| Variable      | Description                                               |
+| ------------- | --------------------------------------------------------- |
+| `SPONSOR_KEY` | Base64-encoded Ed25519 private key for the sponsor wallet |
+
+**Keep this key secure.** It controls a funded wallet. Use your platform's secrets manager — never commit it to source control.
+
+### Monitoring
+
+Use the `/stats` endpoint to monitor pool health:
+
+```bash
+curl https://your-gas-station.com/stats
+```
+
+```json
+{
+  "totalCoins": 20,
+  "availableCoins": 18,
+  "reservedCoins": 2,
+  "totalBalance": "10000000000",
+  "sponsorAddress": "0x...",
+  "currentEpoch": "425",
+  "gasPrice": "750"
+}
+```
+
+Set up the `onPoolDepleted` callback to alert you when the pool runs dry:
+
+```typescript
+const sponsor = new GasSponsor({
+  client,
+  signer: keypair,
+  onPoolDepleted: (stats) => {
+    console.warn("Gas pool depleted!", stats);
+    // Send alert to Slack, PagerDuty, etc.
+  },
+});
+```
+
 ## Architecture
 
 The library has two internal components:
@@ -240,101 +465,17 @@ Key design decisions:
 - **Reservation timeouts** — Coins auto-release after 30s if `reportExecution()` is never called (crashed clients).
 - **Structural typing for effects** — The library accepts any object matching the `ExecutionEffects` shape, compatible with the SDK's `TransactionEffects` type.
 
-## Server Example (Hono)
+## Examples
 
-A complete gas station server in ~30 lines. **Production note:** Add authentication middleware to `/sponsor` and `/report` before deploying — unauthenticated endpoints allow pool exhaustion via fabricated requests.
+Runnable examples in the [`examples/`](./examples/) directory:
 
-```typescript
-import { Hono } from "hono";
-import { SuiClient } from "@mysten/sui/client";
-import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
-import { GasSponsor, GasStationError } from "sui-gas-station";
+```bash
+# Basic sponsorship flow (initialize → sponsor → execute → report)
+SPONSOR_KEY=<base64-key> npx tsx examples/basic-sponsorship.ts
 
-const client = new SuiClient({ url: "https://fullnode.testnet.sui.io" });
-const keypair = Ed25519Keypair.fromSecretKey(process.env.SPONSOR_KEY!);
-
-const sponsor = new GasSponsor({
-  client,
-  signer: keypair,
-  policy: { maxBudgetPerTx: 50_000_000n },
-});
-await sponsor.initialize();
-
-const app = new Hono();
-
-app.post("/sponsor", async (c) => {
-  const { sender, transactionKindBytes } = await c.req.json();
-  try {
-    const result = await sponsor.sponsorTransaction({
-      sender,
-      transactionKindBytes,
-    });
-    return c.json({
-      transactionBytes: result.transactionBytes,
-      sponsorSignature: result.sponsorSignature,
-      reservation: result.reservation,
-    });
-  } catch (err) {
-    if (err instanceof GasStationError) {
-      return c.json({ error: err.code, message: err.message }, 503);
-    }
-    throw err;
-  }
-});
-
-app.post("/report", async (c) => {
-  const { reservation, effects } = await c.req.json();
-  sponsor.reportExecution(reservation, effects);
-  return c.json({ ok: true });
-});
-
-app.get("/stats", (c) => c.json(sponsor.getStats()));
-
-export default app; // Bun: bun run server.ts | Node: serve with @hono/node-server
+# Policy enforcement (budget caps, blocked addresses, custom validators)
+SPONSOR_KEY=<base64-key> npx tsx examples/with-policy.ts
 ```
-
-## Client-Side Integration
-
-The sender (client) builds transaction kind bytes — the operations without any gas data:
-
-```typescript
-import { Transaction } from "@mysten/sui/transactions";
-import { fromBase64, toBase64 } from "@mysten/sui/utils";
-
-const tx = new Transaction();
-tx.moveCall({ target: "0xpkg::module::function", arguments: [...] });
-
-// Build kind bytes (no gas data)
-const kindBytes = await tx.build({ onlyTransactionKind: true });
-
-// Send to your gas station (base64-encode the bytes for JSON transport)
-const res = await fetch("https://your-gas-station.com/sponsor", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ sender: myAddress, transactionKindBytes: toBase64(kindBytes) }),
-});
-const { transactionBytes, sponsorSignature, reservation } = await res.json();
-
-// Sign the full transaction as sender
-const { signature } = await keypair.signTransaction(fromBase64(transactionBytes));
-
-// Submit with both signatures
-const response = await client.executeTransactionBlock({
-  transactionBlock: transactionBytes,
-  signature: [signature, sponsorSignature],
-  options: { showEffects: true },
-});
-
-// Report back so the gas coin gets recycled — MUST be called even if the transaction failed,
-// because the gas coin's ObjectRef changes regardless of transaction success/failure.
-await fetch("https://your-gas-station.com/report", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ reservation, effects: response.effects }),
-});
-```
-
-**Note:** If the sender's kind bytes reference `tx.gas` (e.g., `splitCoins(tx.gas, ...)`), the sponsor must set `allowGasCoinUsage: true` in the policy — see [Security](#security-gas-coin-drain-prevention).
 
 ## License
 
