@@ -96,7 +96,7 @@ export function mockSuiClient(options: {
         })),
         gasObject: {
           reference: {
-            objectId: coins[0].coinObjectId,
+            objectId: coins[0]?.coinObjectId ?? objectId("gas"),
             version: "2",
             digest: VALID_DIGESTS[4],
           },

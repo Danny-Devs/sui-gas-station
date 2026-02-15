@@ -375,6 +375,124 @@ describe("CoinPool", () => {
     });
   });
 
+  describe("close", () => {
+    it("merges available coins and clears pool", async () => {
+      const client = mockSuiClient({
+        coins: [
+          makeCoin("c1", "500000000"),
+          makeCoin("c2", "500000000"),
+          makeCoin("c3", "500000000"),
+        ],
+      });
+      const signer = mockSigner();
+      await pool.initialize(client, signer);
+
+      // Reset the mock to track only close()'s calls
+      client.executeTransactionBlock.mockClear();
+
+      await pool.close(client, signer);
+
+      // Should have executed a merge transaction
+      expect(client.executeTransactionBlock).toHaveBeenCalledOnce();
+
+      // Pool should be empty after close
+      const stats = pool.getStats();
+      expect(stats.total).toBe(0);
+      expect(stats.available).toBe(0);
+    });
+
+    it("skips merge when only one coin is available", async () => {
+      const client = mockSuiClient({
+        coins: [makeCoin("c1", "500000000")],
+      });
+      const signer = mockSigner();
+      pool = new CoinPool({ targetPoolSize: 1 });
+      await pool.initialize(client, signer);
+
+      client.executeTransactionBlock.mockClear();
+
+      await pool.close(client, signer);
+
+      // No merge needed for a single coin
+      expect(client.executeTransactionBlock).not.toHaveBeenCalled();
+
+      // Pool still cleared
+      expect(pool.getStats().total).toBe(0);
+    });
+
+    it("skips merge when pool is empty", async () => {
+      const client = mockSuiClient({ coins: [] });
+      const signer = mockSigner();
+      pool = new CoinPool({ targetPoolSize: 3 });
+      await pool.initialize(client, signer);
+
+      client.executeTransactionBlock.mockClear();
+
+      await pool.close(client, signer);
+
+      expect(client.executeTransactionBlock).not.toHaveBeenCalled();
+      expect(pool.getStats().total).toBe(0);
+    });
+
+    it("only merges available coins, abandons reserved ones", async () => {
+      const client = mockSuiClient({
+        coins: [
+          makeCoin("c1", "500000000"),
+          makeCoin("c2", "500000000"),
+          makeCoin("c3", "500000000"),
+        ],
+      });
+      const signer = mockSigner();
+      await pool.initialize(client, signer);
+
+      // Reserve one coin — simulates in-flight transaction
+      pool.reserve();
+      expect(pool.getStats().reserved).toBe(1);
+
+      client.executeTransactionBlock.mockClear();
+
+      await pool.close(client, signer);
+
+      // Should still merge the 2 available coins
+      expect(client.executeTransactionBlock).toHaveBeenCalledOnce();
+      expect(pool.getStats().total).toBe(0);
+    });
+  });
+
+  describe("fetchAllCoins pagination", () => {
+    it("fetches all pages when coins span multiple pages", async () => {
+      const client = mockSuiClient({ coins: [] });
+      const signer = mockSigner();
+
+      // Override getCoins to simulate pagination: page 1 has 2 coins, page 2 has 1
+      client.getCoins
+        .mockResolvedValueOnce({
+          data: [makeCoin("p1", "500000000"), makeCoin("p2", "500000000")],
+          nextCursor: "cursor_1",
+          hasNextPage: true,
+        })
+        .mockResolvedValueOnce({
+          data: [makeCoin("p3", "500000000")],
+          nextCursor: null,
+          hasNextPage: false,
+        });
+
+      await pool.initialize(client, signer);
+
+      // getCoins should have been called twice (two pages)
+      expect(client.getCoins).toHaveBeenCalledTimes(2);
+
+      // Second call should include the cursor from first page
+      expect(client.getCoins.mock.calls[1][0]).toMatchObject({
+        cursor: "cursor_1",
+      });
+
+      // All 3 coins should be in the pool
+      const stats = pool.getStats();
+      expect(stats.total).toBe(3);
+    });
+  });
+
   describe("replenish", () => {
     it("preserves reserved coins while adding new ones", async () => {
       const client = mockSuiClient({
