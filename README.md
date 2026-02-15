@@ -242,7 +242,7 @@ Key design decisions:
 
 ## Server Example (Hono)
 
-A complete gas station server in ~30 lines:
+A complete gas station server in ~30 lines. **Production note:** Add authentication middleware to `/sponsor` and `/report` before deploying — unauthenticated endpoints allow pool exhaustion via fabricated requests.
 
 ```typescript
 import { Hono } from "hono";
@@ -299,7 +299,7 @@ The sender (client) builds transaction kind bytes — the operations without any
 
 ```typescript
 import { Transaction } from "@mysten/sui/transactions";
-import { fromBase64 } from "@mysten/sui/utils";
+import { fromBase64, toBase64 } from "@mysten/sui/utils";
 
 const tx = new Transaction();
 tx.moveCall({ target: "0xpkg::module::function", arguments: [...] });
@@ -307,11 +307,11 @@ tx.moveCall({ target: "0xpkg::module::function", arguments: [...] });
 // Build kind bytes (no gas data)
 const kindBytes = await tx.build({ onlyTransactionKind: true });
 
-// Send to your gas station
+// Send to your gas station (base64-encode the bytes for JSON transport)
 const res = await fetch("https://your-gas-station.com/sponsor", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ sender: myAddress, transactionKindBytes: kindBytes }),
+  body: JSON.stringify({ sender: myAddress, transactionKindBytes: toBase64(kindBytes) }),
 });
 const { transactionBytes, sponsorSignature, reservation } = await res.json();
 

@@ -47,9 +47,6 @@ const sponsor = new GasSponsor({
   signer: sponsorKeypair,
   targetPoolSize: 3, // Split into 3 gas coins
   targetCoinBalance: 500_000_000n, // 0.5 SUI each
-  // This example splits coins from the gas coin (tx.gas), which requires opting in.
-  // By default, GasCoin references are blocked to prevent drain attacks.
-  policy: { allowGasCoinUsage: true },
 });
 
 await sponsor.initialize();
@@ -71,6 +68,9 @@ const result = await sponsor.sponsorTransaction({
   sender: senderKeypair.toSuiAddress(),
   transactionKindBytes: kindBytes,
   gasBudget: 10_000_000n, // 0.01 SUI
+  // This demo uses splitCoins(tx.gas) which requires opting in per-request.
+  // Most production transactions (MoveCall, etc.) don't need this.
+  policy: { allowGasCoinUsage: true },
 });
 
 console.log(
