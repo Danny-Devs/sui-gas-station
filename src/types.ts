@@ -79,6 +79,17 @@ export interface SponsorPolicy {
   allowedMoveTargets?: string[];
   /** Blocklist of sender addresses */
   blockedAddresses?: string[];
+  /**
+   * Allow transaction kind bytes to reference the gas coin in PTB commands
+   * (SplitCoins, TransferObjects, MergeCoins, MoveCall, MakeMoveVec).
+   *
+   * Default: false — rejects gas coin manipulation to prevent drain attacks
+   * where malicious kind bytes extract value from the sponsor's gas coin.
+   *
+   * Set to true only if your gas station intentionally funds user operations
+   * beyond gas payment (e.g. splitting SUI from the gas coin for in-tx use).
+   */
+  allowGasCoinUsage?: boolean;
   /** Custom validation function — return false to reject */
   customValidator?: (
     sender: string,

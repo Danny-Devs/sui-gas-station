@@ -91,6 +91,62 @@ export async function validatePolicy(
 }
 
 /**
+ * Asserts that no PTB command references the GasCoin input.
+ * Prevents drain attacks where a malicious sender crafts kind bytes containing
+ * SplitCoins(GasCoin, [amount]) + TransferObjects to extract value from the
+ * sponsor's gas coin beyond gas fees.
+ *
+ * Throws GasStationError with code 'POLICY_VIOLATION' if GasCoin is found.
+ */
+export function assertNoGasCoinUsage(
+  commands: ReturnType<Transaction["getData"]>["commands"],
+  sender: string,
+): void {
+  for (const command of commands) {
+    const args = getCommandArguments(command);
+    for (const arg of args) {
+      if (arg.$kind === "GasCoin") {
+        throw new GasStationError(
+          "POLICY_VIOLATION",
+          `${command.$kind} command references GasCoin. ` +
+            "Gas coin manipulation is not allowed in sponsored transactions " +
+            "to prevent value extraction from the sponsor's coin. " +
+            "Set policy.allowGasCoinUsage = true to override.",
+          { sender, commandKind: command.$kind },
+        );
+      }
+    }
+  }
+}
+
+/** Extract all arguments from a PTB command for GasCoin inspection. */
+function getCommandArguments(
+  command: ReturnType<Transaction["getData"]>["commands"][number],
+): Array<{ $kind: string }> {
+  switch (command.$kind) {
+    case "SplitCoins":
+      return [command.SplitCoins.coin, ...command.SplitCoins.amounts];
+    case "TransferObjects":
+      return [
+        ...command.TransferObjects.objects,
+        command.TransferObjects.address,
+      ];
+    case "MergeCoins":
+      return [command.MergeCoins.destination, ...command.MergeCoins.sources];
+    case "MoveCall":
+      return command.MoveCall.arguments;
+    case "MakeMoveVec":
+      return command.MakeMoveVec.elements;
+    case "Upgrade":
+      return [command.Upgrade.ticket];
+    case "Publish":
+      return [];
+    default:
+      return [];
+  }
+}
+
+/**
  * Extract Move call target strings from BCS-encoded transaction kind bytes.
  * Returns targets in normalized `package::module::function` format
  * (package address zero-padded to 64 hex chars).

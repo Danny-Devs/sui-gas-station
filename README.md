@@ -160,6 +160,7 @@ const sponsor = new GasSponsor({
     allowedMoveTargets: [
       "0xpkg::module::function", // Only sponsor these Move calls
     ],
+    allowGasCoinUsage: false, // Default — blocks gas coin drain attacks
     customValidator: async (sender, kindBytes) => {
       // Your logic: rate limits, auth checks, allowlists, etc.
       return isAllowed(sender);
@@ -195,9 +196,34 @@ try {
       case "POLICY_VIOLATION":     // Request rejected by policy
       case "BUILD_FAILED":         // Transaction build/dry-run failed
       case "SIGN_FAILED":          // Sponsor signing failed
+      case "INVALID_EFFECTS":     // Bad effects passed to reportExecution()
     }
   }
 }
+```
+
+## Security: Gas Coin Drain Prevention
+
+By default, the library rejects transaction kind bytes that reference the sponsor's gas coin in PTB commands (`SplitCoins`, `TransferObjects`, `MergeCoins`, `MoveCall`, `MakeMoveVec`). This prevents a class of drain attacks where a malicious sender crafts kind bytes like `SplitCoins(GasCoin, [amount])` + `TransferObjects` to extract value from the sponsor's coin beyond gas fees.
+
+If your use case intentionally splits or moves coins from the gas coin, opt in:
+
+```typescript
+const sponsor = new GasSponsor({
+  client,
+  signer: keypair,
+  policy: { allowGasCoinUsage: true },
+});
+```
+
+Or per-request:
+
+```typescript
+await sponsor.sponsorTransaction({
+  sender,
+  transactionKindBytes: kindBytes,
+  policy: { allowGasCoinUsage: true },
+});
 ```
 
 ## Architecture
@@ -308,7 +334,7 @@ await fetch("https://your-gas-station.com/report", {
 });
 ```
 
-`coinWithBalance` and `splitCoins(tx.gas, ...)` both work — they reference the gas coin, which the sponsor provides.
+**Note:** If the sender's kind bytes reference `tx.gas` (e.g., `splitCoins(tx.gas, ...)`), the sponsor must set `allowGasCoinUsage: true` in the policy — see [Security](#security-gas-coin-drain-prevention).
 
 ## License
 

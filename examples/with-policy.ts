@@ -43,6 +43,10 @@ const sponsor = new GasSponsor({
       "0x0000000000000000000000000000000000000000000000000000000000000bad",
     ],
 
+    // This example splits coins from tx.gas, so we opt in to GasCoin usage.
+    // In production, only enable this if your use case requires it.
+    allowGasCoinUsage: true,
+
     // Custom validator — e.g., check rate limits, verify user identity
     customValidator: async (sender: string, _kindBytes: Uint8Array) => {
       // In production: check your database, rate limiter, auth token, etc.

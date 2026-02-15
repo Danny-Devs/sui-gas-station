@@ -5,7 +5,11 @@
 export { GasSponsor } from "./gas-sponsor.js";
 export { GasStationError } from "./errors.js";
 export type { GasStationErrorCode } from "./errors.js";
-export { validatePolicy, extractMoveTargets } from "./policy.js";
+export {
+  validatePolicy,
+  extractMoveTargets,
+  assertNoGasCoinUsage,
+} from "./policy.js";
 
 // ─── Public Types ───────────────────────────────────────────────────
 export type {

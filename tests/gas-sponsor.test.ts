@@ -30,10 +30,20 @@ describe("GasSponsor", () => {
   });
 
   /**
-   * Helper: build transaction kind bytes for a simple SUI transfer.
-   * This is what a client would send to the gas station.
+   * Helper: build transaction kind bytes for a simple MoveCall.
+   * Does NOT reference GasCoin — safe for default policy tests.
    */
   async function buildKindBytes(): Promise<Uint8Array> {
+    const tx = new Transaction();
+    tx.moveCall({ target: "0x2::coin::transfer" });
+    return await tx.build({ onlyTransactionKind: true });
+  }
+
+  /**
+   * Helper: build kind bytes that reference GasCoin (the drain pattern).
+   * Used to test that the library rejects this by default.
+   */
+  async function buildGasCoinKindBytes(): Promise<Uint8Array> {
     const tx = new Transaction();
     tx.transferObjects([tx.splitCoins(tx.gas, [1000n])], RECIPIENT);
     return await tx.build({ onlyTransactionKind: true });
@@ -258,7 +268,7 @@ describe("GasSponsor", () => {
       expect(stats.availableCoins).toBe(3);
     });
 
-    it("throws BUILD_FAILED on invalid effects (missing gasObject)", async () => {
+    it("throws INVALID_EFFECTS on invalid effects (missing gasObject)", async () => {
       const sponsor = new GasSponsor({
         client,
         signer,
@@ -479,6 +489,96 @@ describe("GasSponsor", () => {
       } catch (err) {
         expect((err as GasStationError).code).toBe("POOL_EXHAUSTED");
       }
+    });
+  });
+
+  describe("gas coin drain prevention", () => {
+    it("rejects kind bytes that reference GasCoin by default", async () => {
+      const sponsor = new GasSponsor({
+        client,
+        signer,
+        targetPoolSize: 3,
+      });
+      await sponsor.initialize();
+
+      const kindBytes = await buildGasCoinKindBytes();
+      try {
+        await sponsor.sponsorTransaction({
+          sender: SENDER,
+          transactionKindBytes: kindBytes,
+          gasBudget: 10_000_000n,
+        });
+        expect.fail("Should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(GasStationError);
+        expect((err as GasStationError).code).toBe("POLICY_VIOLATION");
+        expect((err as GasStationError).message).toContain("GasCoin");
+      }
+    });
+
+    it("allows GasCoin usage when policy permits", async () => {
+      const sponsor = new GasSponsor({
+        client,
+        signer,
+        targetPoolSize: 3,
+        policy: { allowGasCoinUsage: true },
+      });
+      await sponsor.initialize();
+
+      const kindBytes = await buildGasCoinKindBytes();
+      const result = await sponsor.sponsorTransaction({
+        sender: SENDER,
+        transactionKindBytes: kindBytes,
+        gasBudget: 10_000_000n,
+      });
+
+      expect(result.transactionBytes).toBeTruthy();
+      expect(result.sponsorSignature).toBeTruthy();
+    });
+
+    it("allows GasCoin via per-request policy override", async () => {
+      const sponsor = new GasSponsor({
+        client,
+        signer,
+        targetPoolSize: 3,
+        // No default policy — GasCoin blocked by default
+      });
+      await sponsor.initialize();
+
+      const kindBytes = await buildGasCoinKindBytes();
+      const result = await sponsor.sponsorTransaction({
+        sender: SENDER,
+        transactionKindBytes: kindBytes,
+        gasBudget: 10_000_000n,
+        policy: { allowGasCoinUsage: true },
+      });
+
+      expect(result.transactionBytes).toBeTruthy();
+    });
+
+    it("releases reserved coin when GasCoin check fails", async () => {
+      const sponsor = new GasSponsor({
+        client,
+        signer,
+        targetPoolSize: 3,
+      });
+      await sponsor.initialize();
+
+      const kindBytes = await buildGasCoinKindBytes();
+      try {
+        await sponsor.sponsorTransaction({
+          sender: SENDER,
+          transactionKindBytes: kindBytes,
+          gasBudget: 10_000_000n,
+        });
+      } catch {
+        // Expected
+      }
+
+      // Coin should be released back to the pool
+      const stats = sponsor.getStats();
+      expect(stats.reservedCoins).toBe(0);
+      expect(stats.availableCoins).toBe(3);
     });
   });
 

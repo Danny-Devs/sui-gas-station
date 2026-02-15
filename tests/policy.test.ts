@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { Transaction } from "@mysten/sui/transactions";
-import { validatePolicy, extractMoveTargets } from "../src/policy.js";
+import {
+  validatePolicy,
+  extractMoveTargets,
+  assertNoGasCoinUsage,
+} from "../src/policy.js";
 import { GasStationError } from "../src/errors.js";
 
 /** Build kind bytes containing a single MoveCall */
@@ -298,5 +302,87 @@ describe("extractMoveTargets", () => {
     const kind = await buildTransferKind();
     const targets = extractMoveTargets(kind);
     expect(targets).toEqual([]);
+  });
+});
+
+describe("assertNoGasCoinUsage", () => {
+  const sender = "0xsender123";
+
+  it("passes for MoveCall-only kind bytes", async () => {
+    const kind = await buildMoveCallKind("0x2::coin::transfer");
+    const tx = Transaction.fromKind(kind);
+    expect(() =>
+      assertNoGasCoinUsage(tx.getData().commands, sender),
+    ).not.toThrow();
+  });
+
+  it("rejects SplitCoins referencing GasCoin", async () => {
+    const kind = await buildTransferKind(); // Uses tx.splitCoins(tx.gas, ...)
+    const tx = Transaction.fromKind(kind);
+
+    try {
+      assertNoGasCoinUsage(tx.getData().commands, sender);
+      expect.fail("Should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(GasStationError);
+      expect((err as GasStationError).code).toBe("POLICY_VIOLATION");
+      expect((err as GasStationError).message).toContain("GasCoin");
+      expect((err as GasStationError).message).toContain("SplitCoins");
+    }
+  });
+
+  it("rejects MergeCoins referencing GasCoin", async () => {
+    // Build kind bytes where GasCoin is used as MergeCoins destination:
+    // split a coin from gas (also GasCoin), then merge it back into gas.
+    const tx = new Transaction();
+    const coin = tx.splitCoins(tx.gas, [100n]);
+    tx.mergeCoins(tx.gas, [coin]);
+    const kind = await tx.build({ onlyTransactionKind: true });
+
+    const parsed = Transaction.fromKind(kind);
+    expect(() =>
+      assertNoGasCoinUsage(parsed.getData().commands, sender),
+    ).toThrow(GasStationError);
+  });
+
+  it("rejects TransferObjects sending GasCoin directly", async () => {
+    const tx = new Transaction();
+    const recipient = "0x" + "cd".repeat(32);
+    tx.transferObjects([tx.gas], recipient);
+    const kind = await tx.build({ onlyTransactionKind: true });
+
+    const parsed = Transaction.fromKind(kind);
+    try {
+      assertNoGasCoinUsage(parsed.getData().commands, sender);
+      expect.fail("Should have thrown");
+    } catch (err) {
+      expect((err as GasStationError).code).toBe("POLICY_VIOLATION");
+      expect((err as GasStationError).message).toContain("TransferObjects");
+    }
+  });
+
+  it("rejects MoveCall passing GasCoin as argument", async () => {
+    const tx = new Transaction();
+    tx.moveCall({
+      target: "0x2::pay::split",
+      arguments: [tx.gas],
+    });
+    const kind = await tx.build({ onlyTransactionKind: true });
+
+    const parsed = Transaction.fromKind(kind);
+    expect(() =>
+      assertNoGasCoinUsage(parsed.getData().commands, sender),
+    ).toThrow(GasStationError);
+  });
+
+  it("error details include command kind", async () => {
+    const kind = await buildTransferKind();
+    const tx = Transaction.fromKind(kind);
+
+    try {
+      assertNoGasCoinUsage(tx.getData().commands, sender);
+    } catch (err) {
+      expect((err as GasStationError).details?.commandKind).toBe("SplitCoins");
+    }
   });
 });

@@ -40,18 +40,19 @@ Two classes, one public:
 - **Epoch boundary handling** — Gas price cached with TTL. On epoch change, sponsorship pauses during boundary window (1s default, 30s max), then pool revalidated.
 - **Policy = pure function, not class** — Rate limiting belongs in HTTP server middleware, not the library. Library only validates budget caps, allowlists, blocklists.
 - **No GasEstimator class** — SDK's `Transaction.build()` auto-estimates gas. Don't wrap what already works.
-- **Typed errors** — `GasStationError` with codes (`POOL_EXHAUSTED`, `EPOCH_BOUNDARY`, etc.) for actionable error handling.
+- **Gas coin drain prevention** — `assertNoGasCoinUsage()` rejects kind bytes referencing GasCoin in any PTB command (SplitCoins, TransferObjects, MergeCoins, MoveCall, MakeMoveVec). Prevents malicious senders from extracting value from the sponsor's coin. Opt out via `policy.allowGasCoinUsage = true`.
+- **Typed errors** — `GasStationError` with codes (`POOL_EXHAUSTED`, `POOL_NOT_INITIALIZED`, `POLICY_VIOLATION`, `BUILD_FAILED`, `SIGN_FAILED`, `INVALID_EFFECTS`) for actionable error handling.
 
 ### File Map
 
-| File                 | Lines | Purpose                                    |
-| -------------------- | ----- | ------------------------------------------ |
-| `src/types.ts`       | ~60   | All TypeScript interfaces                  |
-| `src/errors.ts`      | ~30   | GasStationError with typed codes           |
-| `src/coin-pool.ts`   | ~300  | Internal coin pool (not exported)          |
-| `src/policy.ts`      | ~90   | Policy validation + Move target extraction |
-| `src/gas-sponsor.ts` | ~250  | GasSponsor class (the public API)          |
-| `src/index.ts`       | ~15   | Public exports barrel                      |
+| File                 | Lines | Purpose                                                |
+| -------------------- | ----- | ------------------------------------------------------ |
+| `src/types.ts`       | ~140  | All TypeScript interfaces                              |
+| `src/errors.ts`      | ~25   | GasStationError with typed codes                       |
+| `src/coin-pool.ts`   | ~500  | Internal coin pool (not exported)                      |
+| `src/policy.ts`      | ~180  | Policy validation, Move target extraction, drain guard |
+| `src/gas-sponsor.ts` | ~400  | GasSponsor class (the public API)                      |
+| `src/index.ts`       | ~25   | Public exports barrel                                  |
 
 ## Dependencies
 

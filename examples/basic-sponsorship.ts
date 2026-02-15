@@ -17,6 +17,7 @@
 import { getFullnodeUrl, SuiClient } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
+import { fromBase64 } from "@mysten/sui/utils";
 import { GasSponsor } from "sui-gas-station";
 
 // ─── Setup ──────────────────────────────────────────────────────────
@@ -46,6 +47,9 @@ const sponsor = new GasSponsor({
   signer: sponsorKeypair,
   targetPoolSize: 3, // Split into 3 gas coins
   targetCoinBalance: 500_000_000n, // 0.5 SUI each
+  // This example splits coins from the gas coin (tx.gas), which requires opting in.
+  // By default, GasCoin references are blocked to prevent drain attacks.
+  policy: { allowGasCoinUsage: true },
 });
 
 await sponsor.initialize();
@@ -80,7 +84,7 @@ console.log(
 
 // Sender signs the same transaction bytes
 const { signature: senderSig } = await senderKeypair.signTransaction(
-  Uint8Array.from(atob(result.transactionBytes), (c) => c.charCodeAt(0)),
+  fromBase64(result.transactionBytes),
 );
 
 // Submit with both signatures

@@ -17,7 +17,7 @@ import { Transaction } from "@mysten/sui/transactions";
 import { fromBase64, toBase64 } from "@mysten/sui/utils";
 import { CoinPool } from "./coin-pool.js";
 import { GasStationError } from "./errors.js";
-import { validatePolicy } from "./policy.js";
+import { assertNoGasCoinUsage, validatePolicy } from "./policy.js";
 import type {
   ExecutionEffects,
   GasCoinReservation,
@@ -193,6 +193,14 @@ export class GasSponsor {
           `Invalid transaction kind bytes: ${err instanceof Error ? err.message : String(err)}`,
           { sender },
         );
+      }
+
+      // 4b. Reject gas coin manipulation (drain prevention).
+      // A malicious sender can craft kind bytes with SplitCoins(GasCoin, [amount])
+      // to extract value from the sponsor's gas coin. This check runs
+      // unconditionally unless the operator explicitly opts in via policy.
+      if (!policy?.allowGasCoinUsage) {
+        assertNoGasCoinUsage(tx.getData().commands, sender);
       }
 
       // 5. Attach gas data
