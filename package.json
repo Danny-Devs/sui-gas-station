@@ -1,6 +1,6 @@
 {
   "name": "sui-gas-station",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Self-hosted TypeScript gas sponsorship library for Sui",
   "license": "Apache-2.0",
   "author": "Danny <danny@dannydevs.com>",
