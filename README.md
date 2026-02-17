@@ -1,5 +1,8 @@
 # sui-gas-station
 
+[![CI](https://github.com/Danny-Devs/sui-gas-station/actions/workflows/ci.yml/badge.svg)](https://github.com/Danny-Devs/sui-gas-station/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/sui-gas-station.svg)](https://www.npmjs.com/package/sui-gas-station)
+
 Self-hosted gas sponsorship library for Sui. Enable gasless transactions in your dApp — users transact without owning SUI.
 
 Zero runtime dependencies. One peer dependency: `@mysten/sui`.
