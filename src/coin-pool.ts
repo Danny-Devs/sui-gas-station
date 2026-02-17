@@ -9,7 +9,7 @@
  * Key insight: after execution, we update coin refs from the JSON-RPC
  * effects response (gasObject.reference) — zero extra RPC calls.
  */
-import type { SuiClient } from "@mysten/sui/client";
+import type { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import type { Signer } from "@mysten/sui/cryptography";
 import { Transaction } from "@mysten/sui/transactions";
 import type { CoinEntry, ExecutionEffects } from "./types.js";
@@ -53,7 +53,7 @@ export class CoinPool {
    * WARNING: Clears ALL pool state including reserved coins.
    * Do NOT call while transactions are in-flight — use replenish() instead.
    */
-  async initialize(client: SuiClient, signer: Signer): Promise<void> {
+  async initialize(client: SuiJsonRpcClient, signer: Signer): Promise<void> {
     this.coins.clear();
     const address = signer.toSuiAddress();
     const existingCoins = await this.fetchAllCoins(client, address);
@@ -116,7 +116,7 @@ export class CoinPool {
    * Fetches all coins from the network, skips any already tracked (by objectId),
    * and adds new ones up to targetPoolSize. Splits large coins if needed.
    */
-  async replenish(client: SuiClient, signer: Signer): Promise<void> {
+  async replenish(client: SuiJsonRpcClient, signer: Signer): Promise<void> {
     const address = signer.toSuiAddress();
     const existingCoins = await this.fetchAllCoins(client, address);
 
@@ -288,7 +288,7 @@ export class CoinPool {
    * Re-fetch all coin ObjectRefs from the network.
    * Called after epoch change when coin versions may have shifted.
    */
-  async revalidatePool(client: SuiClient): Promise<void> {
+  async revalidatePool(client: SuiJsonRpcClient): Promise<void> {
     const poolIds = [...this.coins.keys()];
     if (poolIds.length === 0) return;
 
@@ -333,7 +333,7 @@ export class CoinPool {
    * Only merges available coins — reserved coins are abandoned
    * (their transactions are presumably still in-flight).
    */
-  async close(client: SuiClient, signer: Signer): Promise<void> {
+  async close(client: SuiJsonRpcClient, signer: Signer): Promise<void> {
     // Recycle any expired reservations first (removes stale coins)
     this.recycleExpired(Date.now());
 
@@ -412,7 +412,7 @@ export class CoinPool {
    * Fetch all SUI coins owned by an address, handling pagination.
    */
   private async fetchAllCoins(
-    client: SuiClient,
+    client: SuiJsonRpcClient,
     address: string,
   ): Promise<
     Array<{
@@ -450,7 +450,7 @@ export class CoinPool {
    * Ported from ParallelTransactionExecutor.refillCoinPool.
    */
   private async splitCoins(
-    client: SuiClient,
+    client: SuiJsonRpcClient,
     signer: Signer,
     sourceRefs: Array<{ objectId: string; version: string; digest: string }>,
     count: number,

@@ -33,7 +33,7 @@ Both signatures are submitted together. Sui verifies both — the sender authori
 npm install sui-gas-station @mysten/sui
 ```
 
-`@mysten/sui` is a **peer dependency** — you bring your own version (`^1.45.0`).
+`@mysten/sui` is a **peer dependency** — you bring your own version (`^2.0.0`).
 
 ## Setup: Fund Your Sponsor Wallet
 
@@ -82,11 +82,14 @@ await sponsor.initialize(); // Fetches coins, splits to pool size, caches gas pr
 ## Quick Start
 
 ```typescript
-import { SuiClient } from "@mysten/sui/client";
+import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { GasSponsor } from "sui-gas-station";
 
-const client = new SuiClient({ url: "https://fullnode.mainnet.sui.io" });
+const client = new SuiJsonRpcClient({
+  url: "https://fullnode.mainnet.sui.io",
+  network: "mainnet",
+});
 const keypair = Ed25519Keypair.fromSecretKey(process.env.SPONSOR_KEY!);
 
 // 1. Initialize (splits coins into a pool)
@@ -144,11 +147,14 @@ A complete gas station server in ~30 lines:
 
 ```typescript
 import { Hono } from "hono";
-import { SuiClient } from "@mysten/sui/client";
+import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { GasSponsor, GasStationError } from "sui-gas-station";
 
-const client = new SuiClient({ url: "https://fullnode.testnet.sui.io" });
+const client = new SuiJsonRpcClient({
+  url: "https://fullnode.testnet.sui.io",
+  network: "testnet",
+});
 const keypair = Ed25519Keypair.fromSecretKey(process.env.SPONSOR_KEY!);
 
 const sponsor = new GasSponsor({
@@ -240,17 +246,17 @@ await fetch("https://your-gas-station.com/report", {
 
 ### `new GasSponsor(options)`
 
-| Option                 | Type              | Default        | Description                            |
-| ---------------------- | ----------------- | -------------- | -------------------------------------- |
-| `client`               | `SuiClient`       | _required_     | Sui JSON-RPC client                    |
-| `signer`               | `Signer`          | _required_     | Sponsor keypair (must own SUI)         |
-| `policy`               | `SponsorPolicy`   | —              | Default policy for all requests        |
-| `targetPoolSize`       | `number`          | `20`           | Number of gas coins to maintain        |
-| `targetCoinBalance`    | `bigint`          | `500_000_000n` | Target balance per coin (0.5 SUI)      |
-| `minCoinBalance`       | `bigint`          | `50_000_000n`  | Remove coins below this (0.05 SUI)     |
-| `reservationTimeoutMs` | `number`          | `30_000`       | Auto-release reserved coins after this |
-| `epochBoundaryWindow`  | `number`          | `1_000`        | Pause near epoch boundaries (ms)       |
-| `onPoolDepleted`       | `(stats) => void` | —              | Callback when pool has no coins left   |
+| Option                 | Type               | Default        | Description                            |
+| ---------------------- | ------------------ | -------------- | -------------------------------------- |
+| `client`               | `SuiJsonRpcClient` | _required_     | Sui JSON-RPC client                    |
+| `signer`               | `Signer`           | _required_     | Sponsor keypair (must own SUI)         |
+| `policy`               | `SponsorPolicy`    | —              | Default policy for all requests        |
+| `targetPoolSize`       | `number`           | `20`           | Number of gas coins to maintain        |
+| `targetCoinBalance`    | `bigint`           | `500_000_000n` | Target balance per coin (0.5 SUI)      |
+| `minCoinBalance`       | `bigint`           | `50_000_000n`  | Remove coins below this (0.05 SUI)     |
+| `reservationTimeoutMs` | `number`           | `30_000`       | Auto-release reserved coins after this |
+| `epochBoundaryWindow`  | `number`           | `1_000`        | Pause near epoch boundaries (ms)       |
+| `onPoolDepleted`       | `(stats) => void`  | —              | Callback when pool has no coins left   |
 
 ### `sponsor.initialize(): Promise<void>`
 

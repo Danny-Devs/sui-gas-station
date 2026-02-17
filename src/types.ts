@@ -1,14 +1,14 @@
 // Copyright (c) Danny Devs
 // SPDX-License-Identifier: Apache-2.0
 
-import type { SuiClient } from "@mysten/sui/client";
+import type { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import type { Signer } from "@mysten/sui/cryptography";
 
 // ─── Constructor Options ────────────────────────────────────────────
 
 export interface GasSponsorOptions {
   /** Sui JSON-RPC client */
-  client: SuiClient;
+  client: SuiJsonRpcClient;
   /** Sponsor keypair — owns the gas coins, signs sponsored transactions */
   signer: Signer;
   /** Default policy applied to all requests (can be overridden per-request) */

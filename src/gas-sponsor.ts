@@ -11,7 +11,7 @@
  *   // ... user signs and executes ...
  *   sponsor.reportExecution(result.reservation, response.effects);
  */
-import type { SuiClient } from "@mysten/sui/client";
+import type { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import type { Signer } from "@mysten/sui/cryptography";
 import { Transaction } from "@mysten/sui/transactions";
 import { fromBase64, toBase64 } from "@mysten/sui/utils";
@@ -39,7 +39,7 @@ const MAX_EPOCH_BOUNDARY_WAIT = 30_000; // 30 second cap prevents clock-skew han
 const SUI_ADDRESS_RE = /^0x[0-9a-fA-F]{1,64}$/;
 
 export class GasSponsor {
-  private readonly client: SuiClient;
+  private readonly client: SuiJsonRpcClient;
   private readonly signer: Signer;
   private readonly defaultPolicy?: SponsorPolicy;
   private readonly pool: CoinPool;

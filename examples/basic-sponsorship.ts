@@ -14,7 +14,7 @@
  *   - A funded Sui keypair (sponsor) — needs SUI for gas
  *   - A second keypair (sender) — the gasless user
  */
-import { getFullnodeUrl, SuiClient } from "@mysten/sui/client";
+import { getJsonRpcFullnodeUrl, SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 import { fromBase64 } from "@mysten/sui/utils";
@@ -22,7 +22,10 @@ import { GasSponsor } from "sui-gas-station";
 
 // ─── Setup ──────────────────────────────────────────────────────────
 
-const client = new SuiClient({ url: getFullnodeUrl("devnet") });
+const client = new SuiJsonRpcClient({
+  url: getJsonRpcFullnodeUrl("devnet"),
+  network: "devnet",
+});
 
 // Sponsor keypair — owns the gas coins
 const sponsorKey = process.env.SPONSOR_KEY;

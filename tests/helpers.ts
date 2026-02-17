@@ -55,7 +55,57 @@ export function mockSuiClient(options: {
     makeCoin("a3", "1000000000"),
   ];
 
-  return {
+  // v2 core resolver methods (used by Transaction.build({ client }))
+  const core = {
+    // Return null to use the default coreClientResolveTransactionPlugin
+    resolveTransactionPlugin: vi.fn().mockReturnValue(null),
+    getCurrentSystemState: vi.fn().mockResolvedValue({
+      systemState: {
+        epoch: options.epoch ?? "100",
+        referenceGasPrice: options.referenceGasPrice ?? "1000",
+      },
+    }),
+    getObjects: vi
+      .fn()
+      .mockImplementation(({ objectIds }: { objectIds: string[] }) => ({
+        objects: objectIds.map((id: string) => {
+          const coin = coins.find((c) => c.coinObjectId === id);
+          if (coin) {
+            return {
+              objectId: coin.coinObjectId,
+              version: coin.version,
+              digest: coin.digest,
+              owner: { $kind: "AddressOwner", AddressOwner: SPONSOR_ADDR },
+            };
+          }
+          // Return a minimal object for unknown IDs
+          return {
+            objectId: id,
+            version: "1",
+            digest: VALID_DIGESTS[0],
+            owner: { $kind: "AddressOwner", AddressOwner: SPONSOR_ADDR },
+          };
+        }),
+      })),
+    simulateTransaction: vi.fn().mockResolvedValue({
+      $kind: "Transaction",
+      Transaction: {
+        effects: {
+          gasUsed: {
+            computationCost: "1000",
+            storageCost: "2000",
+            storageRebate: "500",
+          },
+        },
+      },
+    }),
+    getChainIdentifier: vi.fn().mockResolvedValue({
+      chainIdentifier: "4btiuiMPvEENsttpZC7CZ53DruC3MAgfJPsmHJ29eMFg",
+    }),
+  };
+
+  const client = {
+    core,
     getCoins: vi.fn().mockResolvedValue({
       data: coins,
       nextCursor: null,
@@ -110,11 +160,10 @@ export function mockSuiClient(options: {
         },
       },
     }),
-    // For Transaction.build() — SDK resolver calls this to set gas price
+    // v1 compat (still used by GasSponsor directly)
     getReferenceGasPrice: vi
       .fn()
       .mockResolvedValue(BigInt(options.referenceGasPrice ?? "1000")),
-    // For Transaction.build() — returns mock bytes
     dryRunTransactionBlock: vi.fn().mockResolvedValue({
       effects: {
         status: { status: "success" },
@@ -127,6 +176,8 @@ export function mockSuiClient(options: {
       },
     }),
   } as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+  return client;
 }
 
 // ─── Mock Signer ────────────────────────────────────────────────────

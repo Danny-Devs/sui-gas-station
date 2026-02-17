@@ -56,7 +56,7 @@ Two classes, one public:
 
 ## Dependencies
 
-- `@mysten/sui` (peer dependency, `^1.45.0`) — SuiClient, Transaction, Keypair, types
+- `@mysten/sui` (peer dependency, `^2.0.0`) — SuiJsonRpcClient, Transaction, Keypair, types
 - Zero runtime dependencies
 
 ## Key Patterns
@@ -103,9 +103,9 @@ Sui epochs change every ~24h. During the transition, gas prices change and in-fl
 - `Transaction.build({ client })` auto-estimates gas via dry-run when no explicit budget set
 - Reservation timeout is critical — if a client crashes after reserving but before reporting, the coin would be locked forever without it
 
-## v2.x Migration Path
+## SDK Version
 
-This library targets `@mysten/sui ^1.45.0` to integrate with swee-facilitator. Upgrading to `@mysten/sui ^2.0.0` should be straightforward — core APIs (Transaction, SuiClient, Keypair) are similar. When Sui ships the Address Balances feature, `gasMode: 'addressBalance'` may eliminate coin pools entirely.
+This library targets `@mysten/sui ^2.0.0`. The v2 migration renamed `SuiClient` → `SuiJsonRpcClient` and moved exports from `@mysten/sui/client` → `@mysten/sui/jsonRpc`. Core APIs (Transaction, Keypair, executeTransactionBlock) are functionally identical. When Sui ships the Address Balances feature, `gasMode: 'addressBalance'` may eliminate coin pools entirely.
 
 ## Integration Target
 

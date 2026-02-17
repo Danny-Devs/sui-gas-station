@@ -46,10 +46,10 @@
     "prepublishOnly": "pnpm run typecheck && pnpm run test && pnpm run build"
   },
   "peerDependencies": {
-    "@mysten/sui": "^1.45.0"
+    "@mysten/sui": "^2.0.0"
   },
   "devDependencies": {
-    "@mysten/sui": "^1.45.0",
+    "@mysten/sui": "^2.0.0",
     "@types/node": "^22.0.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0",

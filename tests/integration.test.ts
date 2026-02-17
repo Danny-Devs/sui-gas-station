@@ -7,7 +7,7 @@
  * Skips gracefully if either is down (CI-friendly).
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { getFullnodeUrl, SuiClient } from "@mysten/sui/client";
+import { getJsonRpcFullnodeUrl, SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getFaucetHost, requestSuiFromFaucetV2 } from "@mysten/sui/faucet";
 import { Transaction } from "@mysten/sui/transactions";
@@ -15,7 +15,10 @@ import { GasSponsor } from "../src/index.js";
 
 // ─── Setup ──────────────────────────────────────────────────────────
 
-const client = new SuiClient({ url: getFullnodeUrl("devnet") });
+const client = new SuiJsonRpcClient({
+  url: getJsonRpcFullnodeUrl("devnet"),
+  network: "devnet",
+});
 const sponsorKeypair = new Ed25519Keypair();
 const senderKeypair = new Ed25519Keypair();
 
