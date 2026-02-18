@@ -3,7 +3,7 @@
   "version": "0.1.6",
   "description": "Self-hosted TypeScript gas sponsorship library for Sui",
   "license": "Apache-2.0",
-  "author": "Danny <danny@dannydevs.com>",
+  "author": "SweeInc <daniel@sweeinc.com>",
   "repository": {
     "type": "git",
     "url": "https://github.com/Danny-Devs/sui-gas-station"
