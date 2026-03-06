@@ -107,6 +107,38 @@ Sui epochs change every ~24h. During the transition, gas prices change and in-fl
 
 This library targets `@mysten/sui ^2.0.0`. The v2 migration renamed `SuiClient` → `SuiJsonRpcClient` and moved exports from `@mysten/sui/client` → `@mysten/sui/jsonRpc`. Core APIs (Transaction, Keypair, executeTransactionBlock) are functionally identical. When Sui ships the Address Balances feature, `gasMode: 'addressBalance'` may eliminate coin pools entirely.
 
+## E2E Testing with Testcontainers
+
+`pnpm test:integration` currently requires Sui devnet connectivity. To run integration tests locally with zero network dependency, use the **Testcontainers pattern**:
+
+```typescript
+// test/e2e/globalSetup.ts
+import { GenericContainer, Network } from 'testcontainers';
+
+export default async function setup(project) {
+  const network = await new Network().start();
+  const pg = await new GenericContainer('postgres')
+    .withEnvironment({ POSTGRES_USER: 'postgres', POSTGRES_PASSWORD: 'pw', POSTGRES_DB: 'sui_indexer_v2' })
+    .withExposedPorts(5432).withNetwork(network).start();
+
+  const sui = await new GenericContainer(`mysten/sui-tools:${TAG}`)
+    .withCommand(['sui', 'start', '--with-faucet', '--force-regenesis',
+      `--with-indexer=postgres://postgres:pw@${pg.getIpAddress(network.getName())}:5432/sui_indexer_v2`])
+    .withExposedPorts(9000, 9123)
+    .withNetwork(network).start();
+
+  // Fund sponsor keypair via faucet, then run GasSponsor.initialize() against local node
+  project.provide('fullnodeUrl', `http://localhost:${sui.getMappedPort(9000)}`);
+  project.provide('faucetUrl', `http://localhost:${sui.getMappedPort(9123)}`);
+}
+```
+
+**Why**: Clean genesis every run (no stale coins or epoch state), no devnet rate limits, reproducible coin pool behavior. Requires Docker Desktop running.
+
+**Reference**: `external/ts-sdks-fork/packages/sui/test/e2e/utils/globalSetup.ts`
+
+---
+
 ## Integration Target
 
 Primary consumer: `projects/swee-facilitator/` (x402 payment protocol)
